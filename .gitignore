@@ -216,3 +216,12 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Ignore everything
+*
+# Unignore directories so Git can look inside them
+!*/
+# Unignore .ipynb files
+!*.ipynb
+# Ignore Jupyter checkpoint folders
+.ipynb_checkpoints/
