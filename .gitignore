@@ -221,7 +221,8 @@ __marimo__/
 *
 # Unignore directories so Git can look inside them
 !*/
-# Unignore .ipynb files
+# Unignore .ipynb and .py files
 !*.ipynb
+!*.py
 # Ignore Jupyter checkpoint folders
 .ipynb_checkpoints/
