@@ -14,43 +14,93 @@ def gaussian(x, amplitude, mean, std_dev, offset):
     gaussian fit
     '''
     return -amplitude * np.exp(-((x - mean) ** 2) / (2 * std_dev ** 2)) + offset
+def lorentzian(x, x0, gamma, amp, baseline):
+    """
+    x: independent variable
+    x0: center of the peak
+    gamma: Full Width at Half Maximum (FWHM)
+    amp: amplitude (height above baseline)
+    baseline: vertical offset
+    """
+    return baseline + amp * (gamma**2 / ((x - x0)**2 + gamma**2))
 
 # ==============================================================================
 # CALIBRATION FUNCTIONS
 # ==============================================================================
 
-def find_raw_min(x_data, y_data, start_index, end_index):
+def get_min_brightness_gauss(x_data, y_data, start_index, end_index, plot = True):
     '''
-    Finds the minimum brightness value in a given range of x_data
+    Fits gaussian to the data to find the minimum brightness and its position
     '''
     mask = (x_data >= start_index) & (x_data <= end_index)
     x_fit = x_data[mask]
     y_fit = y_data[mask]
 
-    guess_amp = np.min(y_fit)
+    if len(x_fit) == 0:
+        raise ValueError("The provided range contains no data points.")
+
+    guess_amp = np.min(y_fit)-np.max(y_fit)
     guess_center = x_fit[np.argmin(y_fit)]
     guess_sigma = 10.0 
-    guess_offset = 0
+    guess_offset = np.max(y_fit)
 
     initial_guess = [guess_amp, guess_center, guess_sigma, guess_offset]
-    popt, cov = curve_fit(gaussian, x_fit, y_fit, p0=initial_guess)
+    popt, cov = curve_fit(gaussian, x_fit, y_fit, p0=initial_guess, maxfev=100000)
+    amp, center, sigma, offset = popt
 
-    return popt, cov, x_fit, y_fit
+    min_brightness = amp + offset
+    min_position = center
 
-def get_min_brightness(x_data, y_data, start_index, end_index, plot = True):
-    '''
-    Fits gaussian to the data to find the minimum brightness and its position
-    '''
-    popt, cov, x_fit, y_fit = find_raw_min(x_data, y_data, start_index, end_index)
-    x_detailed = np.linspace(x_fit.min(), x_fit.max(), 500)
-
-    if plot == True:
-        plt.plot(x_detailed, gaussian(x_detailed, *popt), linewidth=2, label='Gaussian Fit 1575-1640', color = cm.batlowS(0))
-    
-    min_brightness = np.min(gaussian(x_detailed, *popt))
-    min_position = x_detailed[np.argmin(gaussian(x_detailed, *popt))]
+    if plot:
+        x_detailed = np.linspace(x_fit.min(), x_fit.max(), 500)
+        y_detailed = gaussian(x_detailed, *popt) # Evaluated ONLY once
+        
+        plt.plot(x_detailed, y_detailed, linewidth=2, 
+                label=f'Gaussian Fit {start_index}-{end_index}', color=cm.batlowS(0))
 
     return min_brightness, min_position
+
+def get_min_brightness_lorentz(x_data, y_data, start_index, end_index, plot = True):
+    '''
+    Fits lorentzian to the data to find the minimum brightness and its position
+    '''
+    mask = (x_data >= start_index) & (x_data <= end_index)
+    x_fit = x_data[mask]
+    y_fit = y_data[mask]
+
+    if len(x_fit) == 0:
+        raise ValueError("The provided range contains no data points.")
+
+    y_mean = np.mean(y_fit)
+    y_min = np.min(y_fit)
+    y_max = np.max(y_fit)
+
+    if abs(y_max - y_mean) > abs(y_mean - y_min):
+        # We are fitting a PEAK
+        guess_amp = y_max - y_min
+        guess_center = x_fit[np.argmax(y_fit)]
+        guess_offset = y_min
+    else:
+        # We are fitting a DIP
+        guess_amp = y_min - y_max
+        guess_center = x_fit[np.argmin(y_fit)]
+        guess_offset = y_max
+    guess_gamma = (x_fit.max() - x_fit.min()) * 0.1
+
+    initial_guess = [guess_center, guess_gamma, guess_amp, guess_offset]
+    popt, cov = curve_fit(lorentzian, x_fit, y_fit, p0=initial_guess, maxfev=100000)
+    center, gamma, amp, offset = popt
+    extrema_brightness = amp + offset
+    extrema_position = center
+
+    if plot:
+        x_detailed = np.linspace(x_fit.min(), x_fit.max(), 500)
+        y_detailed = lorentzian(x_detailed, *popt) # Evaluated ONLY once
+        
+        plt.plot(x_detailed, y_detailed, linewidth=2, 
+                label=f'Lorentzian Fit {start_index}-{end_index}', color=cm.batlowS(0))
+
+    return extrema_brightness, extrema_position
 
 
 ## !! The following three functions have yet to be tested in this form !! ##
@@ -134,7 +184,7 @@ def calculate_object_edges(x, y, row_idx, x_range=None, show_plot=False, object_
     
     return width, x_start, x_end
 
-def find_left_edge(x, y, row_idx, x_range=None, save_plot=False):
+def find_left_edge(x, y, row_idx, x_range=None, save_plot=False, object_type = 'dark'):
     """
     Uses first derivative analysis to find the left edge of bright region in a 1D intensity lineout. 
     Alternately, could be used to find right edge of a dark region.
@@ -162,7 +212,10 @@ def find_left_edge(x, y, row_idx, x_range=None, save_plot=False):
     dy_roi = dy[mask]
     
     # find falling edge: the steepest negative slope in the ROI
-    edge_idx = np.argmax(dy_roi)
+    if object_type == 'dark':
+        edge_idx = np.argmax(dy_roi)
+    else:
+        edge_idx = np.argmin(dy_roi)
    
     x_edge = x_roi[edge_idx]
 
@@ -185,12 +238,12 @@ def find_left_edge(x, y, row_idx, x_range=None, save_plot=False):
         plt.xlim(x_range[0] - 250, x_range[1] + 250)
 
         plt.tight_layout()
-        plt.savefig(f'sh_calib/deriv_fits/left_row_{row_idx}', bbox_inches = 'tight')
+        plt.savefig(f'sh_calib/deriv_fits/right_row_{row_idx}', bbox_inches = 'tight')
         plt.close()
     
     return x_edge
 
-def find_top_edge(x, y, col_idx, y_range=None, save_plot=False):
+def find_top_edge(x, y, col_idx, y_range=None, save_plot=False, object_type = 'dark'):
     """
     Uses first derivative analysis to find the top edge of bright region in a 1D intensity lineout. 
     Alternately, could be used to find bottom edge of a dark region.
@@ -217,8 +270,11 @@ def find_top_edge(x, y, col_idx, y_range=None, save_plot=False):
     dx_roi = dx[mask]
     
     # the falling edge is the steepest negative slope in the ROI
-    edge_idx = np.argmin(dx_roi)
-   
+    if object_type == 'dark':
+        edge_idx = np.argmin(dx_roi)
+    else:
+        edge_idx = np.argmax(dx_roi)
+
     y_edge = y_roi[edge_idx]
 
     if save_plot:
@@ -246,10 +302,65 @@ def find_top_edge(x, y, col_idx, y_range=None, save_plot=False):
     
     return y_edge
 
+def find_bottom_edge(x, y, col_idx, y_range=None, save_plot=False):
+    """
+    Uses first derivative analysis to find the bottom edge of bright region in a 1D intensity lineout.
+    Plotting optional but recommended for validation
+    """
+    # smooth data
+    x_smooth = savgol_filter(x, window_length=51, polyorder=3)
+
+    # apply mask if given
+    if y_range is not None:
+        mask = (y >= y_range[0]) & (y <= y_range[1])
+    else:
+        mask = np.ones_like(x, dtype=bool) # Use all data if no range given
+        
+    x_roi = x_smooth[mask]
+    y_roi = y[mask]
+
+    # mask check if it got data
+    if len(x_roi) == 0:
+        raise ValueError("The provided x_range contains no data points.")
+
+    # calculate derivative on whole smoothed data, then slice to ROI
+    dx = np.gradient(x_smooth, y)
+    dx_roi = dx[mask]
+    
+    # the falling edge is the steepest negative slope in the ROI
+    edge_idx = np.argmax(dx_roi)
+   
+    y_edge = y_roi[edge_idx]
+
+    if save_plot:
+        fig, ax1 = plt.subplots(figsize=(9, 5))
+        
+        ax1.scatter(x, y, color='gray', alpha=0.3, s=10, label='Raw Data')
+        ax1.plot(x_smooth, y, color='blue', linewidth=2, label='Smoothed Data')
+        
+        if y_range is not None:
+            ax1.axvspan(y_range[0], y_range[1], color='yellow', alpha=0.1, label='Search Range (ROI)')
+            
+        ax1.axvline(y_edge, color='red', linestyle='--', label=f'Edge: {y_edge:.1f}')
+            
+        ax1.set_title(f'Bottom edge at Column {col_idx}')
+        ax1.set_xlabel('X Position')
+        ax1.set_ylabel('Intensity')
+        ax1.legend(loc='upper right')
+
+        plt.xlim(y_range[0]-250, y_range[1]+250)
+
+        plt.tight_layout()
+        plt.savefig(f'sh_calib/deriv_fits/cone_bottom_col_{col_idx}')
+        plt.close()
+        # plt.show()
+    
+    return y_edge
+
 # ==============================================================================
 # STREAK ANALYSIS FUNCTIONS
 # ==============================================================================
-def plot_vlineout_streak(t_ns, ext, image, output = f'streak_images/lineouts/linout.jpg'):
+def plot_vlineout_streak(t_ns, ext, image, return_data = False, plot = False, output = f'streak_images/lineouts/linout.jpg'):
     x_min, x_max, y_min, y_max = ext
     height_px, width_px = image.shape
     
@@ -260,14 +371,18 @@ def plot_vlineout_streak(t_ns, ext, image, output = f'streak_images/lineouts/lin
 
     actual_x_ns = x_axis_ns[col_idx]
     lineout_data = image[:, col_idx]
-    
-    plt.figure(figsize=(10, 4))
-    plt.plot(y_axis_mm, lineout_data, color='tab:green', linewidth=1.5)
-    
-    plt.title(f'Spatial Profile at t ≈ {actual_x_ns:.2f} ns')
-    plt.xlabel('Position [mm]')
-    plt.ylabel('Intensity')
-    plt.xlim(-2, 4)
-    plt.grid(True, alpha=0.5)
-    plt.savefig(output, dpi=300, bbox_inches='tight')
-    plt.close()
+
+    if plot:
+        plt.figure(figsize=(10, 4))
+        plt.plot(y_axis_mm, lineout_data, color='tab:green', linewidth=1.5)
+        
+        plt.title(f'Spatial Profile at t ≈ {actual_x_ns:.2f} ns')
+        plt.xlabel('Position [mm]')
+        plt.ylabel('Intensity')
+        plt.xlim(-2, 4)
+        plt.grid(True, alpha=0.5)
+        plt.savefig(output, dpi=300, bbox_inches='tight')
+        plt.close()
+
+    if return_data:
+        return y_axis_mm, lineout_data
