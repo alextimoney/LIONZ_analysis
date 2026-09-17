@@ -12,7 +12,7 @@ from scipy.integrate import cumulative_trapezoid
 wavelength_um = 0.532 # 0.532 microns
 m = 1 # magnification = 1
 n_c = 1.1e21/(wavelength_um**2)
-L = 4.16 # 4160 mm to first lens
+L = 416 # 4160 mm to first lens
 dens_corr = (2*m*n_c)/L
 
 # ==============================================================================
@@ -587,5 +587,5 @@ def plot_shock_density(x, y_raw, piston_lim, mag_lim, time):
     plt.legend()
     plt.ticklabel_format(axis='y', style='sci', scilimits=(0, 0), useMathText=True)
     plt.xlabel('Position Relative to Piston Shock [mm]')
-    plt.ylabel(r'Path Integrated Density [cm$^{-3}$]')
+    plt.ylabel(r'Path Integrated Density [cm$^{-2}$]')
     plt.savefig(f'streak_images/density_profiles/n_{time}.jpg', bbox_inches = 'tight')
