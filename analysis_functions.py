@@ -456,6 +456,49 @@ def find_shock_positions(x_data, y_data, times, piston_lim, mag_lim):
 
     return peaks
 
+def find_shock_positions_3rd(x_data, y_data, times, piston_lim, mag_lim, diag_lim):
+    plt.plot(x_data, y_data, color = 'brown', label = f'Lineout', alpha = 0.8)
+    
+    mask_piston = (x_data >= piston_lim[0]) & (x_data <= piston_lim[1])
+    x_fit_p, y_fit_p = x_data[mask_piston],y_data[mask_piston]
+    piston_max=(x_fit_p[np.argmax(y_fit_p)])
+    piston_min=(x_fit_p[np.argmin(y_fit_p)])
+    
+    mask_mag = (x_data >= mag_lim[0]) & (x_data <= mag_lim[1])
+    x_fit, y_fit = x_data[mask_mag],y_data[mask_mag]
+    
+    magshock_max = x_fit[np.argmax(y_fit)]
+    magshock_min = x_fit[np.argmin(y_fit)]
+
+    mask_diag = (x_data >= diag_lim[0]) & (x_data <= diag_lim[1])
+    x_fit_d, y_fit_d = x_data[mask_diag],y_data[mask_diag]
+    
+    diag_max = x_fit_d[np.argmax(y_fit_d)]
+    diag_min = x_fit_d[np.argmin(y_fit_d)]
+    
+    plt.axvline(magshock_max, color = 'seagreen', label = 'MagShock Max')
+    plt.axvline(magshock_min, color = 'limegreen', label = 'MagShock Min')
+    
+    plt.axvline(piston_max, color = 'deepskyblue', label = 'Piston Max')
+    plt.axvline(piston_min, color = 'powderblue', label = 'Piston Min')
+
+    plt.axvline(diag_max, color = 'darkorange', label = 'Diag Max')
+    plt.axvline(diag_min, color = 'gold', label = 'Diag Min')
+        
+    plt.xlim(0,8)
+    plt.xlim(piston_max-1,piston_max+1.5)
+    plt.legend(loc = 'upper left')
+    plt.ylim(-1,5)
+    plt.title(f'Shock Lineout at t = {times}')
+    plt.xlabel('Position [mm]')
+    plt.ylabel('Intensity')
+    plt.savefig(f'streak_images/lineouts/peaks/t={times}.jpg', bbox_inches = 'tight') 
+    plt.clf()
+
+    peaks = [piston_min, piston_max, magshock_min, magshock_max, diag_min, diag_max]
+
+    return peaks
+
 def get_averaged_lineouts(x_common, t, pos, lo, initial_piston):
     pos_shifted = []
     lineouts_shifted = []
@@ -502,7 +545,7 @@ def get_averaged_lineouts(x_common, t, pos, lo, initial_piston):
     plt.show()
     return pos_shifted, lineouts_shifted
 
-def plot_shock_density(x, y_raw, piston_lim, mag_lim, time):
+def plot_shock_density(x, y_raw, y_noshift, piston_lim, mag_lim, time):
 
     path_length = 0.5 #0.5 cm
     
@@ -549,10 +592,13 @@ def plot_shock_density(x, y_raw, piston_lim, mag_lim, time):
     density = (1/path_length)*dens_corr * cumulative_trapezoid(dn_dx, x_cm, initial=0)
 
     mask_raw = (x > piston_min - 0.5) & (x < magshock_max + 0.3)
-    x_0, y_0 = x[mask_raw], y_raw[mask_raw]
-    x_cm_0 = x_0/10
+    y_0 = np.where(mask_raw, y_raw, 0)
+    y_0_noshift = np.where(mask_raw, y_noshift, 0)
+    x_cm_0 = x/10
     dn_dx_0 = cumulative_trapezoid(y_0, x_cm_0, initial=0) 
+    dn_dx_0_noshift = cumulative_trapezoid(y_0_noshift, x_cm_0, initial=0)
     density_pi_0 = dens_corr * cumulative_trapezoid(dn_dx_0, x_cm_0, initial=0)
+    density_pi_0_noshift = dens_corr * cumulative_trapezoid(dn_dx_0_noshift, x_cm_0, initial=0)
 
     # plot lineout and fit
     fig, axs = plt.subplots(figsize=(7, 5))
@@ -568,7 +614,7 @@ def plot_shock_density(x, y_raw, piston_lim, mag_lim, time):
 
     # plot first integration
     fig, axs = plt.subplots(figsize=(7, 5))
-    plt.plot(x_0, dn_dx_0, color='orangered', linewidth=2, alpha = 0.5, linestyle = '--', label = 'Raw Data Integration')
+    plt.plot(x, dn_dx_0, color='orangered', linewidth=2, alpha = 0.5, linestyle = '--', label = 'Raw Data Integration')
     plt.plot(x, dn_dx, color='royalblue', linewidth=2, label = 'Fit Integration')
     plt.title(r'First Integration: $\frac{dn_e}{dx}$'+ f' at t={time}$\pm 0.5$ ns')
     plt.ylabel('dn/dx')
@@ -580,12 +626,133 @@ def plot_shock_density(x, y_raw, piston_lim, mag_lim, time):
 
     # plot second integration: density profile
     fig, axs = plt.subplots(figsize=(7, 5))
-    plt.plot(x_0, density_pi_0, color='orangered', linewidth=2, label = 'Raw Path Integrated Density', alpha = 0.5, linestyle = '--')
-    plt.plot(x, density_pi, color='royalblue', linewidth=2, label = 'Fit Path Integrated Density')
-    plt.title(f'Path Int. Electron Density Profile: t={time}$\pm 0.5$ ns')
+    plt.plot(x, density_pi_0, color='orangered', linewidth=2, label = 'Raw Relative Density', alpha = 0.5, linestyle = '--')
+    plt.plot(x, density_pi, color='royalblue', linewidth=2, label = 'Fit Relative Density')
+    plt.title(f'Relative Electron Density Profile: t={time}$\pm 0.5$ ns')
     plt.grid(True)
     plt.legend()
     plt.ticklabel_format(axis='y', style='sci', scilimits=(0, 0), useMathText=True)
     plt.xlabel('Position Relative to Piston Shock [mm]')
-    plt.ylabel(r'Path Integrated Density [cm$^{-2}$]')
+    plt.ylabel(r'Relative Density')
     plt.savefig(f'streak_images/density_profiles/n_{time}.jpg', bbox_inches = 'tight')
+
+    # returns x axis, y fit, raw dndx, dndx from fit, raw density, density from fit
+    return x, y_fit_total, dn_dx_0, dn_dx, dn_dx_0_noshift, density_pi_0, density_pi, density_pi_0_noshift
+
+def plot_shock_density_3rd(x, y_raw, y_noshift, piston_lim, mag_lim, diag_lim, time):
+
+    path_length = 0.5 #0.5 cm
+    
+    # make mask for piston based on min and max positions
+    mask_piston = (x >= piston_lim[0]) & (x <= piston_lim[1])
+    x_piston, y_piston = x[mask_piston], y_raw[mask_piston]
+
+    piston_min = x_piston[np.argmin(y_piston)]
+    piston_max = x_piston[np.argmax(y_piston)]
+    
+    p0_piston = [
+        0, 0.05, -200,  # Negative dip
+        -0.3, 0.05,  350   # Positive peak
+    ]
+    
+    popt_piston, _ = curve_fit(double_gaussian, x_piston, y_piston, p0=p0_piston)
+    
+    # make mask for magshock based on min and max positions
+    mask_mag = (x >= mag_lim[0]) & (x <= mag_lim[1])
+    x_mag, y_mag = x[mask_mag], y_raw[mask_mag]
+    
+    magshock_min = x_mag[np.argmin(y_mag)]
+    magshock_max = x_mag[np.argmax(y_mag)]
+    
+    p0_mag = [
+        magshock_min, 0.05, -200,  # Negative dip (Note the negative amplitude!)
+        magshock_max, 0.05,  200   # Positive peak
+    ]
+    
+    popt_mag, _ = curve_fit(double_gaussian, x_mag, y_mag, p0=p0_mag)
+
+    # make mask for magshock based on min and max positions
+    mask_diag = (x >= diag_lim[0]) & (x <= diag_lim[1])
+    x_diag, y_diag = x[mask_diag], y_raw[mask_diag]
+    
+    diag_min = x_diag[np.argmin(y_diag)]
+    diag_max = x_diag[np.argmax(y_diag)]
+    print('diag min:', diag_min, 'diag max:', diag_max)
+    
+    p0_diag = [
+        diag_min, 0.05, -200,  # Negative dip (Note the negative amplitude!)
+        diag_max, 0.05,  200   # Positive peak
+    ]
+    
+    popt_diag, _ = curve_fit(double_gaussian, x_diag, y_diag, p0=p0_diag)
+    
+    # combine fits and mask to spatial windows - make everywhere else equal to 0
+    y_fit_piston = np.where(mask_piston, double_gaussian(x, *popt_piston), 0.0)
+    y_fit_mag    = np.where(mask_mag,    double_gaussian(x, *popt_mag),    0.0)
+    y_fit_diag   = np.where(mask_diag,   double_gaussian(x, *popt_diag),   0.0)
+
+    # get total fit by summing
+    y_fit_total = y_fit_piston + y_fit_mag + y_fit_diag
+
+    x_cm = x/10
+    
+    # integrate twice
+    dn_dx = cumulative_trapezoid(y_fit_total, x_cm, initial=0) 
+    density_pi = dens_corr * cumulative_trapezoid(dn_dx, x_cm, initial=0)
+    density = (1/path_length)*dens_corr * cumulative_trapezoid(dn_dx, x_cm, initial=0)
+
+    mask_raw = (x > piston_min - 1.5) & (x < magshock_max + 0.3)
+    y_0 = np.where(mask_raw, y_raw, 0)
+    y_0_noshift = np.where(mask_raw, y_noshift, 0)
+    x_cm_0 = x/10
+    dn_dx_0 = cumulative_trapezoid(y_0, x_cm_0, initial=0) 
+    dn_dx_0_noshift = cumulative_trapezoid(y_0_noshift, x_cm_0, initial=0)
+    density_pi_0 = dens_corr * cumulative_trapezoid(dn_dx_0, x_cm_0, initial=0)
+    density_pi_0_noshift = dens_corr * cumulative_trapezoid(dn_dx_0_noshift, x_cm_0, initial=0)
+
+    # plot lineout and fit
+    fig, axs = plt.subplots(figsize=(7, 5))
+    plt.plot(x, y_raw, color='orangered', alpha=0.6, label='Raw Lineout')
+    plt.plot(x, y_fit_total, color='royalblue', linewidth=2.5, label='Combined Gaussian Fit')
+    plt.title(f'Lineout Fit: t={time}$\pm 0.5$ ns')
+    plt.xlim(-2, 2)
+    plt.legend()
+    plt.grid(True)
+    plt.xlabel('Position Relative to Piston Shock [mm]')
+    plt.ylabel(r'Intensity')
+    plt.savefig(f'streak_images/density_profiles/third_feat/intensity_{time}.jpg', bbox_inches = 'tight')
+
+    # plot first integration
+    fig, axs = plt.subplots(figsize=(7, 5))
+    plt.plot(x, dn_dx_0, color='orangered', linewidth=2, alpha = 0.5, linestyle = '--', label = 'Raw Data Integration')
+    plt.plot(x, dn_dx, color='royalblue', linewidth=2, label = 'Fit Integration')
+    plt.title(r'First Integration: $\frac{dn_e}{dx}$'+ f' at t={time}$\pm 0.5$ ns')
+    plt.ylabel('dn/dx')
+    plt.xlabel('Position Relative to Piston Shock [mm]')
+    plt.ticklabel_format(axis='y', style='sci', scilimits=(0, 0), useMathText=True)
+    plt.grid(True)
+    plt.legend()
+    plt.savefig(f'streak_images/density_profiles/third_feat/dndx_{time}.jpg', bbox_inches = 'tight')
+
+    # plot second integration: density profile
+    fig, axs = plt.subplots(figsize=(7, 5))
+    plt.plot(x, density_pi_0, color='orangered', linewidth=2, label = 'Raw Relative Density', alpha = 0.5, linestyle = '--')
+    plt.plot(x, density_pi, color='royalblue', linewidth=2, label = 'Fit Relative Density')
+    plt.title(f'Relative Electron Density Profile: t={time}$\pm 0.5$ ns')
+    plt.grid(True)
+    plt.legend()
+    plt.ticklabel_format(axis='y', style='sci', scilimits=(0, 0), useMathText=True)
+    plt.ylim(bottom=-0.1e16)
+    plt.xlabel('Position Relative to Piston Shock [mm]')
+    plt.ylabel(r'Relative Density')
+    plt.savefig(f'streak_images/density_profiles/third_feat/n_{time}.jpg', bbox_inches = 'tight')
+
+    # options: 'comparison' or 'peaks'
+    r = 'peaks'
+    if r == 'comparison':
+        # returns x axis, y fit, raw dndx, dndx from fit, raw density, density from fit
+        return x, y_fit_total, dn_dx_0, dn_dx, dn_dx_0_noshift, density_pi_0, density_pi, density_pi_0_noshift
+    elif r == 'peaks':
+        return diag_min, diag_max
+    else:
+        raise ValueError("Invalid return option. Must be 'comparison' or 'peaks'.")
