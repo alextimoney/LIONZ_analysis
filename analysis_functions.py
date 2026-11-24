@@ -421,7 +421,14 @@ def get_lineouts(streak, times, bg, cf, ext):
     if bg.all() != 0:
         print('background subtracting...')
         lineouts = (lineouts-bg)/bg
+    # plot lineouts
+    # plt.figure(figsize=(10, 4))
+    # for i, t in enumerate(times):
+    #     plt.plot(positions[i], lineouts[i], label=f't = {t} ns', linewidth=1.5)
+    #     plt.show()
+    
     return positions, lineouts
+
 def find_shock_positions(x_data, y_data, times, piston_lim, mag_lim):
     plt.plot(x_data, y_data, color = 'brown', label = f'Lineout', alpha = 0.8)
     
@@ -600,41 +607,47 @@ def plot_shock_density(x, y_raw, y_noshift, piston_lim, mag_lim, time):
     density_pi_0 = dens_corr * cumulative_trapezoid(dn_dx_0, x_cm_0, initial=0)
     density_pi_0_noshift = dens_corr * cumulative_trapezoid(dn_dx_0_noshift, x_cm_0, initial=0)
 
+    # normalize intensity lineouts to the downstream intensity
+    max_dens = np.max(density_pi)
+    density_pi /= max_dens
+    density_pi_0 /= max_dens
+    density_pi_0_noshift /= max_dens
+
     # plot lineout and fit
     fig, axs = plt.subplots(figsize=(7, 5))
     plt.plot(x, y_raw, color='orangered', alpha=0.6, label='Raw Lineout')
     plt.plot(x, y_fit_total, color='royalblue', linewidth=2.5, label='Combined Gaussian Fit')
-    plt.title(f'Lineout Fit: t={time}$\pm 0.5$ ns')
+    plt.title(f'Intensity Lineout: t = {time}$\pm$ 0.5 ns')
     plt.xlim(-2, 2)
     plt.legend()
     plt.grid(True)
     plt.xlabel('Position Relative to Piston Shock [mm]')
     plt.ylabel(r'Intensity')
-    plt.savefig(f'streak_images/density_profiles/intensity_{time}.jpg', bbox_inches = 'tight')
+    plt.savefig(f'streak_images/density_profiles/intensity_{time}.jpg', bbox_inches = 'tight', dpi = 300)
 
     # plot first integration
     fig, axs = plt.subplots(figsize=(7, 5))
     plt.plot(x, dn_dx_0, color='orangered', linewidth=2, alpha = 0.5, linestyle = '--', label = 'Raw Data Integration')
     plt.plot(x, dn_dx, color='royalblue', linewidth=2, label = 'Fit Integration')
-    plt.title(r'First Integration: $\frac{dn_e}{dx}$'+ f' at t={time}$\pm 0.5$ ns')
+    plt.title(r'First Integration: $\frac{dn_e}{dx}$'+ f' at t = {time}$\pm$ 0.5 ns')
     plt.ylabel('dn/dx')
     plt.xlabel('Position Relative to Piston Shock [mm]')
     plt.ticklabel_format(axis='y', style='sci', scilimits=(0, 0), useMathText=True)
     plt.grid(True)
     plt.legend()
-    plt.savefig(f'streak_images/density_profiles/dndx_{time}.jpg', bbox_inches = 'tight')
+    plt.savefig(f'streak_images/density_profiles/dndx_{time}.jpg', bbox_inches = 'tight', dpi = 300)
 
     # plot second integration: density profile
     fig, axs = plt.subplots(figsize=(7, 5))
     plt.plot(x, density_pi_0, color='orangered', linewidth=2, label = 'Raw Relative Density', alpha = 0.5, linestyle = '--')
     plt.plot(x, density_pi, color='royalblue', linewidth=2, label = 'Fit Relative Density')
-    plt.title(f'Relative Electron Density Profile: t={time}$\pm 0.5$ ns')
+    plt.title(f'Relative Electron Density Profile: t = {time}$\pm$ 0.5 ns')
     plt.grid(True)
     plt.legend()
     plt.ticklabel_format(axis='y', style='sci', scilimits=(0, 0), useMathText=True)
     plt.xlabel('Position Relative to Piston Shock [mm]')
     plt.ylabel(r'Relative Density')
-    plt.savefig(f'streak_images/density_profiles/n_{time}.jpg', bbox_inches = 'tight')
+    plt.savefig(f'streak_images/density_profiles/n_{time}.jpg', bbox_inches = 'tight', dpi = 300)
 
     # returns x axis, y fit, raw dndx, dndx from fit, raw density, density from fit
     return x, y_fit_total, dn_dx_0, dn_dx, dn_dx_0_noshift, density_pi_0, density_pi, density_pi_0_noshift
